@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="TryPublishSigned" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <NuGet>$(LocalAppData)\NuGet\NuGet.exe</NuGet>
+  </PropertyGroup>
+
+  <Target Name="TryPublishSigned" DependsOnTargets="CheckForNewVersions">
+    <Message Text="$(NewVersionsExist)" />
+    <CallTarget Targets="PublishSigned" Condition=" '$(NewVersionsExist)' == 'true' " />
+  </Target>
+
+  <Target Name="PublishSigned" DependsOnTargets="RetrieveLatestVersions">
+    <!-- Sign assemblies -->
+    <Exec Command="packages\Brutal.Dev.StrongNameSigner\tools\StrongNameSigner.Console.exe -k jsonpatch.snk -in &quot;packages\Marvin.JsonPatch&quot;" WorkingDirectory=".." />
+    <Exec Command="cmd /c DEL /S *.unsigned" WorkingDirectory="..\packages\Marvin.JsonPatch" />
+
+    <!-- Repackage -->
+    <MakeDir Directories="..\artifacts" />
+    <XmlPoke Namespaces="&lt;Namespace Prefix='nuget' Uri='http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd'/&gt;"
+             XmlInputPath="..\packages\Marvin.JsonPatch\Marvin.JsonPatch.nuspec"
+             Query="//nuget:id | //nuget:title"
+             Value="Marvin.JsonPatch.Signed">
+    </XmlPoke>
+    <XmlPoke Namespaces="&lt;Namespace Prefix='nuget' Uri='http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd'/&gt;"
+             XmlInputPath="..\packages\Marvin.JsonPatch\Marvin.JsonPatch.nuspec"
+             Query="//nuget:projectUrl"
+             Value="https://github.com/carolynvs/JsonPatch.Signed">
+    </XmlPoke>
+    <XmlPoke Namespaces="&lt;Namespace Prefix='nuget' Uri='http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd'/&gt;"
+             XmlInputPath="..\packages\Marvin.JsonPatch\Marvin.JsonPatch.nuspec"
+             Query="//nuget:description"
+             Value="This is the Marvin.JsonPatch package, repackaged with strongly named assemblies. See https://www.nuget.org/packages/Marvin.JsonPatch for the official package.">
+    </XmlPoke>
+
+    <Exec Command="$(NuGet) pack packages\Marvin.JsonPatch\Marvin.JsonPatch.nuspec -OutputDirectory artifacts" WorkingDirectory=".." />
+
+    <!-- Publish -->
+    <!-- The environment variable BAMBOO_NUGET_PASSWORD comes from the nuget.password variable defined on the jsonpatch.signed plan in Bamboo -->
+    <Exec Command="$(NuGet) push Marvin.JsonPatch.Signed.$(JsonPatchVersion).nupkg %25BAMBOO_NUGET_PASSWORD%25" WorkingDirectory="..\artifacts" ContinueOnError="ErrorAndContinue"/>
+  </Target>
+
+  <Target Name="CheckForNewVersions" DependsOnTargets="RetrieveLatestVersions">
+    <PropertyGroup>
+      <JsonPatchListing>Marvin.JsonPatch $(JsonPatchVersion)</JsonPatchListing>
+      <NewVersionsExist Condition="!$(ListedVersions.Contains(JsonPatchListing))">true</NewVersionsExist>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RetrieveLatestVersions" DependsOnTargets="DownloadNuGet">
+    <RemoveDir Directories="..\packages" />
+    <Exec Command="$(NuGet) install Brutal.Dev.StrongNameSigner -ExcludeVersion -OutputDirectory packages" WorkingDirectory=".." />
+    <Exec Command="$(NuGet) install Marvin.JsonPatch -ExcludeVersion -OutputDirectory packages -PackageSaveMode nuspec" WorkingDirectory=".." />
+    <XmlPeek Namespaces="&lt;Namespace Prefix='nuget' Uri='http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd'/&gt;"
+             XmlInputPath="..\packages\Marvin.JsonPatch\Marvin.JsonPatch.nuspec"
+             Query="//nuget:version/text()">
+      <Output TaskParameter="Result" PropertyName="JsonPatchVersion" />
+    </XmlPeek>
+    <Exec Command="$(NuGet) list Marvin.JsonPatch -AllVersions" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ListedVersions" />
+    </Exec>
+  </Target>
+
+  <Target Name="DownloadNuGet" Condition="!Exists('$(NuGet)')">
+    <MakeDir Directories="$(LocalAppData)\NuGet" />
+    <Exec Command="@powershell -NoProfile -ExecutionPolicy unrestricted -Command &quot;$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest 'https://www.nuget.org/nuget.exe' -OutFile '$(NuGet)'&quot;" />
+  </Target>
+
+</Project>
