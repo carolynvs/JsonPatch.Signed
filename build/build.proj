@@ -7,7 +7,7 @@
 
   <Target Name="TryPublishSigned" DependsOnTargets="CheckForNewVersions">
     <Message Text="$(NewVersionsExist)" />
-    <CallTarget Targets="PublishSigned" Condition=" '$(NewVersionsExist)' == 'true' " />
+    <CallTarget Targets="PublishSigned" Condition=" '$(ShouldPublishToNuGet)' == 'True' " />
   </Target>
 
   <Target Name="PublishSigned" DependsOnTargets="RetrieveLatestVersions">
@@ -41,10 +41,9 @@
   </Target>
 
   <Target Name="CheckForNewVersions" DependsOnTargets="RetrieveLatestVersions">
-    <PropertyGroup>
-      <JsonPatchListing>Marvin.JsonPatch $(JsonPatchVersion)</JsonPatchListing>
-      <NewVersionsExist Condition="!$(ListedVersions.Contains(JsonPatchListing))">true</NewVersionsExist>
-    </PropertyGroup>
+    <Exec Command="@powershell -NoProfile -ExecutionPolicy unrestricted -File check-nuget-version-exists.ps1 Marvin.JsonPatch.Signed $(JsonPatchVersion)" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ShouldPublishToNuGet" />
+    </Exec>
   </Target>
 
   <Target Name="RetrieveLatestVersions" DependsOnTargets="DownloadNuGet">
@@ -56,9 +55,6 @@
              Query="//nuget:version/text()">
       <Output TaskParameter="Result" PropertyName="JsonPatchVersion" />
     </XmlPeek>
-    <Exec Command="$(NuGet) list Marvin.JsonPatch -AllVersions" ConsoleToMSBuild="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="ListedVersions" />
-    </Exec>
   </Target>
 
   <Target Name="DownloadNuGet" Condition="!Exists('$(NuGet)')">
